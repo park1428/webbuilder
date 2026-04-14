@@ -43,6 +43,51 @@ const ATTR_EXPLANATIONS = {
   id: 'Unique identifier for the element',
 };
 
+const CSS_EXPLANATIONS = {
+  'background-color': 'background color of the element',
+  'background': 'background image or color',
+  'color': 'text color',
+  'font-size': 'text size (bigger = easier to read)',
+  'font-weight': 'text thickness (700 = bold)',
+  'font-family': 'font typeface',
+  'padding': 'inner spacing (space inside element)',
+  'padding-top': 'top inner spacing',
+  'padding-bottom': 'bottom inner spacing',
+  'padding-left': 'left inner spacing',
+  'padding-right': 'right inner spacing',
+  'margin': 'outer spacing (space around element)',
+  'margin-top': 'top outer spacing',
+  'margin-bottom': 'bottom outer spacing',
+  'margin-left': 'left outer spacing',
+  'margin-right': 'right outer spacing',
+  'width': 'how wide the element is',
+  'height': 'how tall the element is',
+  'max-width': 'maximum width allowed',
+  'min-width': 'minimum width allowed',
+  'display': 'layout type (flex, block, inline)',
+  'flex-direction': 'flex layout direction (row/column)',
+  'justify-content': 'horizontal alignment in flex',
+  'align-items': 'vertical alignment in flex',
+  'gap': 'spacing between flex/grid items',
+  'border': 'border around element',
+  'border-radius': 'rounded corners (higher = rounder)',
+  'box-shadow': 'drop shadow effect',
+  'text-align': 'text alignment (left/center/right)',
+  'line-height': 'spacing between lines of text',
+  'position': 'positioning mode (static/relative/absolute)',
+  'top': 'position from top edge',
+  'bottom': 'position from bottom edge',
+  'left': 'position from left edge',
+  'right': 'position from right edge',
+  'z-index': 'stack order (higher = on top)',
+  'opacity': 'transparency (1 = solid, 0 = invisible)',
+  'cursor': 'mouse cursor style',
+  'overflow': 'how to handle overflow content',
+  'text-decoration': 'text styling (underline, etc.)',
+  'transform': 'rotate, scale, or move element',
+  'transition': 'smooth animation between states',
+};
+
 function parseValueUnit(val) {
   if (!val && val !== 0) return { num: '', unit: 'px' };
   const v = String(val).trim();
@@ -75,6 +120,22 @@ function toHex(color) {
   return '#000000';
 }
 
+function HelpIcon({ text }) {
+  const [show, setShow] = useState(false);
+  if (!text) return null;
+  return (
+    <span
+      className="sp-help-icon"
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+      title={text}
+    >
+      ?
+      {show && <span className="sp-help-tooltip">{text}</span>}
+    </span>
+  );
+}
+
 function ColorField({ label, prop, get, set }) {
   const raw = get(prop) || '';
   const [text, setText] = useState(raw);
@@ -82,10 +143,14 @@ function ColorField({ label, prop, get, set }) {
   useEffect(() => { setText(get(prop) || ''); }, [get, prop]);
 
   const applyText = () => { if (text !== get(prop)) set(prop, text); };
+  const help = CSS_EXPLANATIONS[prop];
 
   return (
     <div className="sp-row">
-      <span className="sp-label">{label}</span>
+      <span className="sp-label">
+        {label}
+        <HelpIcon text={help} />
+      </span>
       <div className="sp-color-field">
         <input
           type="color"
@@ -111,6 +176,7 @@ function ColorField({ label, prop, get, set }) {
 function NumberField({ label, prop, get, set, units = ['px', '%', 'rem', 'em', 'auto'], min, max, step = 1 }) {
   const parsed = parseValueUnit(get(prop));
   const isKeyword = ['auto', 'none', 'fit-content', 'max-content', 'min-content'].includes(parsed.unit);
+  const help = CSS_EXPLANATIONS[prop];
 
   const handleNum = (e) => {
     const n = e.target.value;
@@ -129,7 +195,10 @@ function NumberField({ label, prop, get, set, units = ['px', '%', 'rem', 'em', '
 
   return (
     <div className="sp-row">
-      <span className="sp-label">{label}</span>
+      <span className="sp-label">
+        {label}
+        <HelpIcon text={help} />
+      </span>
       <div className="sp-num-unit">
         <input
           type="number"
@@ -151,9 +220,13 @@ function NumberField({ label, prop, get, set, units = ['px', '%', 'rem', 'em', '
 }
 
 function SelectField({ label, prop, get, set, options }) {
+  const help = CSS_EXPLANATIONS[prop];
   return (
     <div className="sp-row">
-      <span className="sp-label">{label}</span>
+      <span className="sp-label">
+        {label}
+        <HelpIcon text={help} />
+      </span>
       <select
         value={get(prop) || ''}
         onChange={e => set(prop, e.target.value)}
@@ -167,10 +240,14 @@ function SelectField({ label, prop, get, set, options }) {
 }
 
 function RadioField({ label, prop, get, set, options }) {
+  const help = CSS_EXPLANATIONS[prop];
   const current = get(prop) || '';
   return (
     <div className="sp-row">
-      <span className="sp-label">{label}</span>
+      <span className="sp-label">
+        {label}
+        <HelpIcon text={help} />
+      </span>
       <div className="sp-radio-group">
         {options.map(o => (
           <button
@@ -921,7 +998,14 @@ function highlightHtmlWithTooltips(formatted) {
   });
   out = out.replace(/([a-zA-Z-:]+)=(&quot;[^&]*&quot;)/g, (_, name, val) => {
     const explanation = ATTR_EXPLANATIONS[name] || `The ${name} attribute`;
-    return `<span class="ct-attr ct-hoverable" data-tooltip-type="Attribute: ${name}" data-tooltip-text="${explanation}">${name}</span>=<span class="ct-val">${val}</span>`;
+    let processedVal = val;
+    if (name === 'style') {
+      processedVal = val.replace(/([a-z-]+):/gi, (_, cssProp) => {
+        const cssExplanation = CSS_EXPLANATIONS[cssProp.toLowerCase()] || cssProp;
+        return `<span class="ct-css-prop ct-hoverable" data-tooltip-type="${cssProp}" data-tooltip-text="${cssExplanation}">${cssProp}</span>:`;
+      });
+    }
+    return `<span class="ct-attr ct-hoverable" data-tooltip-type="Attribute: ${name}" data-tooltip-text="${explanation}">${name}</span>=<span class="ct-val">${processedVal}</span>`;
   });
   out = out.replace(/&gt;/g, '<span class="ct-bracket">&gt;</span>');
   out = out.split('\n').map(line => {

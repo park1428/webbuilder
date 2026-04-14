@@ -135,9 +135,12 @@ function getComputedStylesFromFrame(component, editor) {
   }
 }
 
-function analyzeSpacing(components, editor) {
+function analyzeSpacing(components, editor, flaggedComponents = new Set()) {
   const issues = [];
   components.forEach(comp => {
+    const compId = comp.getId?.() || comp.ccid;
+    if (compId && flaggedComponents.has(compId)) return;
+
     const tagName = (comp.get('tagName') || '').toLowerCase();
     const classes = (comp.getClasses?.() || []).join(' ').toLowerCase();
 
@@ -185,6 +188,7 @@ function analyzeSpacing(components, editor) {
             'padding': '48px 24px'
           });
         });
+        ed.refresh();
       }
     };
   }
@@ -192,10 +196,13 @@ function analyzeSpacing(components, editor) {
   return null;
 }
 
-function analyzeTextReadability(components, editor) {
+function analyzeTextReadability(components, editor, flaggedComponents = new Set()) {
   const issues = [];
 
   components.forEach(comp => {
+    const compId = comp.getId?.() || comp.ccid;
+    if (compId && flaggedComponents.has(compId)) return;
+
     const tagName = (comp.get('tagName') || '').toLowerCase();
 
     if (!['p', 'span', 'div', 'li', 'td'].includes(tagName)) return;
@@ -208,7 +215,7 @@ function analyzeTextReadability(components, editor) {
     const styles = getComponentStyles(comp);
     const computed = getComputedStylesFromFrame(comp, editor);
 
-    const fontSize = parsePixelValue(styles['font-size'] || computed.fontSize);
+    const fontSize = parsePixelValue(computed.fontSize || styles['font-size']);
 
     if (fontSize > 0 && fontSize < 14) {
       issues.push({
@@ -221,6 +228,8 @@ function analyzeTextReadability(components, editor) {
 
   if (issues.length > 0) {
     const affected = issues.slice(0, 3).map(i => i.component);
+    const firstSize = issues[0].currentSize;
+    const displaySize = firstSize > 0 ? Math.round(firstSize) : '?';
     return {
       id: 'text-small',
       title: 'Text is too small to read',
@@ -230,13 +239,14 @@ function analyzeTextReadability(components, editor) {
       affectedElements: affected,
       preview: {
         type: 'comparison',
-        before: `${Math.round(issues[0].currentSize)}px`,
+        before: `${displaySize}px`,
         after: '16px'
       },
       fix: (ed) => {
         issues.forEach(({ component }) => {
           component.addStyle({ 'font-size': '16px' });
         });
+        ed.refresh();
       }
     };
   }
@@ -244,20 +254,24 @@ function analyzeTextReadability(components, editor) {
   return null;
 }
 
-function analyzeHeadingHierarchy(components, editor) {
+function analyzeHeadingHierarchy(components, editor, flaggedComponents = new Set()) {
   const headings = [];
   const bodyText = [];
 
   components.forEach(comp => {
+    const compId = comp.getId?.() || comp.ccid;
+
     const tagName = (comp.get('tagName') || '').toLowerCase();
     const styles = getComponentStyles(comp);
     const computed = getComputedStylesFromFrame(comp, editor);
 
-    const fontSize = parsePixelValue(styles['font-size'] || computed.fontSize) || 16;
-    const fontWeight = parseInt(styles['font-weight'] || computed.fontWeight) || 400;
+    const fontSize = parsePixelValue(computed.fontSize || styles['font-size']) || 16;
+    const fontWeight = parseInt(computed.fontWeight || styles['font-weight']) || 400;
 
     if (['h1', 'h2', 'h3'].includes(tagName)) {
-      headings.push({ component: comp, tagName, fontSize, fontWeight });
+      if (!(compId && flaggedComponents.has(compId))) {
+        headings.push({ component: comp, tagName, fontSize, fontWeight });
+      }
     } else if (['p', 'span', 'div'].includes(tagName)) {
       const html = comp.toHTML?.() || '';
       const text = html.replace(/<[^>]*>/g, '').trim();
@@ -279,6 +293,10 @@ function analyzeHeadingHierarchy(components, editor) {
   });
 
   if (weakHeadings.length > 0) {
+    const firstHeading = weakHeadings[0];
+    const displaySize = firstHeading.fontSize > 0 ? Math.round(firstHeading.fontSize) : '?';
+    const targetSize = firstHeading.tagName === 'h1' ? '36px' : (firstHeading.tagName === 'h2' ? '28px' : '22px');
+
     return {
       id: 'heading-weak',
       title: 'Headings need more emphasis',
@@ -288,8 +306,8 @@ function analyzeHeadingHierarchy(components, editor) {
       affectedElements: weakHeadings.map(h => h.component),
       preview: {
         type: 'comparison',
-        before: `${Math.round(weakHeadings[0].fontSize)}px`,
-        after: weakHeadings[0].tagName === 'h1' ? '36px bold' : '28px bold'
+        before: `${displaySize}px weight ${firstHeading.fontWeight}`,
+        after: `${targetSize} bold`
       },
       fix: (ed) => {
         weakHeadings.forEach(({ component, tagName }) => {
@@ -301,6 +319,7 @@ function analyzeHeadingHierarchy(components, editor) {
             'margin-bottom': '16px'
           });
         });
+        ed.refresh();
       }
     };
   }
@@ -308,10 +327,13 @@ function analyzeHeadingHierarchy(components, editor) {
   return null;
 }
 
-function analyzeButtonVisibility(components, editor) {
+function analyzeButtonVisibility(components, editor, flaggedComponents = new Set()) {
   const weakButtons = [];
 
   components.forEach(comp => {
+    const compId = comp.getId?.() || comp.ccid;
+    if (compId && flaggedComponents.has(compId)) return;
+
     const tagName = (comp.get('tagName') || '').toLowerCase();
     const classes = (comp.getClasses?.() || []).join(' ').toLowerCase();
     const compHtml = comp.toHTML?.() || '';
@@ -325,8 +347,8 @@ function analyzeButtonVisibility(components, editor) {
     const computed = getComputedStylesFromFrame(comp, editor);
 
     const bgColor = styles['background-color'] || styles.background || computed.backgroundColor;
-    const padding = parsePixelValue(styles.padding || computed.padding);
-    const fontSize = parsePixelValue(styles['font-size'] || computed.fontSize);
+    const padding = parsePixelValue(computed.padding || styles.padding);
+    const fontSize = parsePixelValue(computed.fontSize || styles['font-size']);
 
     const bgRgb = parseColor(bgColor);
     const isTransparent = !bgRgb || bgColor === 'transparent' || bgColor?.includes('rgba(0, 0, 0, 0)');
@@ -368,6 +390,7 @@ function analyzeButtonVisibility(components, editor) {
             'display': 'inline-block'
           });
         });
+        ed.refresh();
       }
     };
   }
@@ -375,10 +398,13 @@ function analyzeButtonVisibility(components, editor) {
   return null;
 }
 
-function analyzeColorContrast(components, editor) {
+function analyzeColorContrast(components, editor, flaggedComponents = new Set()) {
   const issues = [];
 
   components.forEach(comp => {
+    const compId = comp.getId?.() || comp.ccid;
+    if (compId && flaggedComponents.has(compId)) return;
+
     const tagName = (comp.get('tagName') || '').toLowerCase();
 
     if (!['p', 'span', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'a', 'li', 'div', 'button'].includes(tagName)) return;
@@ -428,6 +454,7 @@ function analyzeColorContrast(components, editor) {
           const newColor = bgLum > 0.5 ? '#1a202c' : '#f8fafc';
           component.addStyle({ color: newColor });
         });
+        ed.refresh();
       }
     };
   }
@@ -435,7 +462,7 @@ function analyzeColorContrast(components, editor) {
   return null;
 }
 
-function analyzeClashingColors(components, editor) {
+function analyzeClashingColors(components, editor, flaggedComponents = new Set()) {
   const issues = [];
 
   function isHarshColor(rgb) {
@@ -454,6 +481,9 @@ function analyzeClashingColors(components, editor) {
   }
 
   components.forEach(comp => {
+    const compId = comp.getId?.() || comp.ccid;
+    if (compId && flaggedComponents.has(compId)) return;
+
     const tagName = (comp.get('tagName') || '').toLowerCase();
     if (!['p', 'span', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'a', 'div', 'section', 'header'].includes(tagName)) return;
 
@@ -543,6 +573,7 @@ function analyzeClashingColors(components, editor) {
             component.addStyle({ color: '#e2e8f0' });
           }
         });
+        ed.refresh();
       }
     };
   }
@@ -550,10 +581,13 @@ function analyzeClashingColors(components, editor) {
   return null;
 }
 
-function analyzeSectionSeparation(components, editor) {
+function analyzeSectionSeparation(components, editor, flaggedComponents = new Set()) {
   const sections = [];
 
   components.forEach(comp => {
+    const compId = comp.getId?.() || comp.ccid;
+    if (compId && flaggedComponents.has(compId)) return;
+
     const tagName = (comp.get('tagName') || '').toLowerCase();
     const classes = (comp.getClasses?.() || []).join(' ').toLowerCase();
 
@@ -610,6 +644,7 @@ function analyzeSectionSeparation(components, editor) {
             'margin-bottom': '0'
           });
         });
+        ed.refresh();
       }
     };
   }
@@ -617,10 +652,13 @@ function analyzeSectionSeparation(components, editor) {
   return null;
 }
 
-function analyzeLineLength(components, editor) {
+function analyzeLineLength(components, editor, flaggedComponents = new Set()) {
   const issues = [];
 
   components.forEach(comp => {
+    const compId = comp.getId?.() || comp.ccid;
+    if (compId && flaggedComponents.has(compId)) return;
+
     const tagName = (comp.get('tagName') || '').toLowerCase();
 
     if (!['p', 'div'].includes(tagName)) return;
@@ -665,6 +703,7 @@ function analyzeLineLength(components, editor) {
         issues.forEach(({ component }) => {
           component.addStyle({ 'max-width': '700px' });
         });
+        ed.refresh();
       }
     };
   }
@@ -718,11 +757,18 @@ export function analyzeDesign(editor, options = {}) {
   ];
 
   const issues = [];
+  const flaggedComponents = new Set();
 
   for (const rule of analysisRules) {
     try {
-      const result = rule(allComponents, editor);
+      const result = rule(allComponents, editor, flaggedComponents);
       if (result) {
+        if (result.affectedElements) {
+          result.affectedElements.forEach(comp => {
+            const id = comp.getId?.() || comp.ccid;
+            if (id) flaggedComponents.add(id);
+          });
+        }
         issues.push(result);
       }
     } catch (e) {
